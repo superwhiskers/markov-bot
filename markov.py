@@ -6,6 +6,7 @@
 # import the needed modules
 from discord.ext.commands import Bot
 import re, markovify, discord, json
+import multiprocessing as mp
 
 # load config file, exit if not found
 cfg = None
@@ -29,7 +30,7 @@ class squeaky:
 
     # whem this class is called
     def __call__(self, match):
-       
+
         # really quick and dirty workaround
         try:
 
@@ -40,7 +41,7 @@ class squeaky:
 
             # group them
             match = match.group(0)
-        
+
         # getting uid
         try:
 
@@ -48,9 +49,9 @@ class squeaky:
             uid = int(match[2:(len(match) - 1)])
 
         except:
-            
+
             try:
-            
+
                 # some are like this
                 uid = int(match[3:(len(match) - 1)])
 
@@ -58,7 +59,7 @@ class squeaky:
 
                 # otherwise, return
                 return match
-        
+
         try:
 
             # look it up
@@ -76,7 +77,23 @@ class squeaky:
                     return role.name
 
             # otherwise, return uid
-            return str(uid) 
+            return str(uid)
+
+# the function we use to spool writes to the logfile
+def spooler(queue):
+
+    # load the log file
+    with open("chat.log", "a") as f:
+
+        # loop to constantly write lines to the file
+        while True:
+
+            # get a message to write from the queue
+            message = queue.get()
+
+            # write the message
+            f.write(message)
+
 
 # create the bot object
 bot = Bot(description="that one markov chain bot", command_prefix="m~")
@@ -101,23 +118,10 @@ async def on_ready():
     extracted_text = ""
 
     # load the log file
-    with open("/opt/yamamura/output.log") as f:
+    with open("chat.log", "r") as f:
 
-        # for each line in the file
-        for line in f:
-
-            # get the message from the line
-            msg = re.search("(?<=\]:\s)(.*)(?=\s\[)", line)
-
-            # check if there is a message
-            if msg == None:
-
-                # if there wasn't one that was able
-                # to be extracted, skip this line
-                continue
-
-            # get the message from the line
-            extracted_text += ("%s\n" % msg.group(0))
+        # extract all text from it
+        extracted_text = f.read()
 
     # save the extracted text to a markov chain
     global chain
@@ -128,16 +132,16 @@ async def on_ready():
 
 @bot.command()
 async def markov(ctx, *args):
-    
+
     # global copy
     global chain
 
     # make the sentence variable
     sentence = None
-    
+
     # check if we have arguments
     if args == ():
-    
+
         # make a sentence
         while sentence == None:
 
@@ -149,7 +153,7 @@ async def markov(ctx, *args):
         # make a variable for the
         # to-be-sent message
         sentence = ""
-        
+
         # individual sentence var
         isentence = None
 
@@ -157,7 +161,7 @@ async def markov(ctx, *args):
         # number of sentences we
         # have constructed
         x = 1
-        
+
         # check if the arg is a valid
         # int
         try:
@@ -181,16 +185,16 @@ async def markov(ctx, *args):
 
             # exit
             return
-        
+
         # now construct the message
         for x in range(iters):
 
             # make sure we have a message
             while isentence == None:
-                
+
                 # make the message
                 isentence = chain.make_sentence(tries=250)
-            
+
             # if it works, append the message to the
             # full message
             sentence += ("%s\n" % isentence)
@@ -200,13 +204,13 @@ async def markov(ctx, *args):
 
     # make the message squeaky clean
     sentence = re.sub(r"\<\@(.*?)\>", squeaky(ctx), sentence, flags=re.IGNORECASE)
-    
+
     # remove the @everyones and @heres
     sentence = re.sub(r"\@everyone", "everyone", sentence, flags=re.IGNORECASE)
     sentence = re.sub(r"\@here", "here", sentence, flags=re.IGNORECASE)
 
     try:
-    
+
         # send it
         await ctx.send(sentence)
 
