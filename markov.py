@@ -4,9 +4,9 @@
 #
 
 # import the needed modules
+from multiprocessing import Process, Queue
 from discord.ext.commands import Bot
 import re, markovify, discord, json
-import multiprocessing as mp
 
 # load config file, exit if not found
 cfg = None
@@ -17,6 +17,15 @@ except FileNotFoundError:
     print(
         'copy "config.example.json", rename it to "config.json and edit it before running this bot'
     )
+
+# create the bot object
+bot = Bot(description="that one markov chain bot", command_prefix="m~")
+
+# markov chain
+chain = None
+
+# the spooler queue
+spool_queue = None
 
 # the thing that fixes mentions
 class squeaky:
@@ -79,11 +88,27 @@ class squeaky:
             # otherwise, return uid
             return str(uid)
 
+
+# the callback that the spooler runs after each write
+def spooler_callback(logfile):
+
+    # reset the chain
+    global chain
+    try:
+
+        # ensure no errors occur
+        chain = markovify.NewlineText(logfile.read())
+
+    except:
+
+        pass
+    
+
 # the function we use to spool writes to the logfile
-def spooler(queue):
+def spooler(queue, callback):
 
     # load the log file
-    with open("chat.log", "a") as f:
+    with open("chat.log", "a+") as f:
 
         # loop to constantly write lines to the file
         while True:
@@ -94,11 +119,9 @@ def spooler(queue):
             # write the message
             f.write(message)
 
+            # run the callback with the file
+            callback(f)
 
-# create the bot object
-bot = Bot(description="that one markov chain bot", command_prefix="m~")
-
-chain = None
 
 @bot.event
 async def on_ready():
@@ -118,18 +141,40 @@ async def on_ready():
     extracted_text = ""
 
     # load the log file
-    with open("chat.log", "r") as f:
+    with open("chat.log", "a+") as f:
 
         # extract all text from it
         extracted_text = f.read()
 
     # save the extracted text to a markov chain
     global chain
-    chain = markovify.NewlineText(extracted_text)
+    try:
 
+        # ensure no errors occur
+        chain = markovify.NewlineText(extracted_text)
+
+    except:
+
+        pass
+
+    # create the spooler queue
+    global spool_queue
+    spool_queue = Queue()
+
+    # start up the spooler
+    spooler_proc = Process(target=spooler, args=(spool_queue, spooler_callback))
+    spooler_proc.start()
+    spooler_proc.join()
+
+# output each new message to a file
+@bot.event
+async def on_message(message):
+
+    # get the message and let the spooler take care of it
+    global spool_queue
+    spool_queue.put(message.clean_content)
 
 # the only command
-
 @bot.command()
 async def markov(ctx, *args):
 
@@ -221,4 +266,4 @@ async def markov(ctx, *args):
 
 
 # run the bot
-bot.run(cfg["token"])
+bot.run(cfg["token"], bot=True)
