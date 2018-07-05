@@ -102,7 +102,7 @@ def spooler_callback(logfile):
     except:
 
         pass
-    
+
 
 # the function we use to spool writes to the logfile
 def spooler(queue, callback):
@@ -116,8 +116,13 @@ def spooler(queue, callback):
             # get a message to write from the queue
             message = queue.get()
 
+			# ensure its not empty
+            if message == "":
+
+                continue
+
             # write the message
-            f.write(message)
+            f.write(message + "\n")
 
             # run the callback with the file
             callback(f)
@@ -164,105 +169,120 @@ async def on_ready():
     # start up the spooler
     spooler_proc = Process(target=spooler, args=(spool_queue, spooler_callback))
     spooler_proc.start()
-    spooler_proc.join()
+
 
 # output each new message to a file
 @bot.event
 async def on_message(message):
 
-    # get the message and let the spooler take care of it
-    global spool_queue
-    spool_queue.put(message.clean_content)
+    # get the arguments passed
+    args = message.content.split(" ")[1:]
 
-# the only command
-@bot.command()
-async def markov(ctx, *args):
+    # check if this is a command
+    if message.content.split(" ")[0] == (cfg["prefix"] + "markov"):
 
-    # global copy
-    global chain
+        # make the sentence variable
+        sentence = None
 
-    # make the sentence variable
-    sentence = None
+        # get the chain
+        global chain
 
-    # check if we have arguments
-    if args == ():
-
-        # make a sentence
-        while sentence == None:
+        # check if we have arguments
+        if args == []:
 
             # make a sentence
-            sentence = chain.make_sentence(tries=250)
+            while sentence == None:
 
-    else:
+                # make a sentence
+                sentence = chain.make_sentence(tries=250)
 
-        # make a variable for the
-        # to-be-sent message
-        sentence = ""
+        else:
 
-        # individual sentence var
-        isentence = None
+            # make a variable for the
+            # to-be-sent message
+            sentence = ""
 
-        # make a variable for the
-        # number of sentences we
-        # have constructed
-        x = 1
+            # individual sentence var
+            isentence = None
 
-        # check if the arg is a valid
-        # int
-        try:
+            # make a variable for the
+            # number of sentences we
+            # have constructed
+            x = 1
 
-            # check
-            iters = int(args[0])
+            # check if the arg is a valid
+            # int
+            try:
 
-            # tell them if it is definitely too big
-            if iters >= 50:
+                # check
+                iters = int(args[0])
 
-                # send a message
-                await ctx.send(f"{ ctx.author.mention }, that number of sentences is definitely way too high!")
+                # tell them if it is definitely too big
+                if iters >= 50:
+
+                    # send a message
+                    await message.channel.send(
+                        f"{ ctx.author.mention }, that number of sentences is definitely way too high!"
+                    )
+
+                    # exit
+                    return
+
+            except ValueError:
+
+                # respond saying it isn't valid
+                await message.channel.send(f"{ args[0] } is not a number...")
 
                 # exit
                 return
 
-        except ValueError:
+            # now construct the message
+            for x in range(iters):
 
-            # respond saying it isn't valid
-            await ctx.send(f"{ args[0] } is not a number...")
+                # make sure we have a message
+                while isentence == None:
 
-            # exit
-            return
+                    # make the message
+                    isentence = chain.make_sentence(tries=250)
 
-        # now construct the message
-        for x in range(iters):
+                # if it works, append the message to the
+                # full message
+                sentence += ("%s\n" % isentence)
 
-            # make sure we have a message
-            while isentence == None:
+                # reset the isentence variable
+                isentence = None
 
-                # make the message
-                isentence = chain.make_sentence(tries=250)
+        # make the message squeaky clean
+        sentence = re.sub(r"\<\@(.*?)\>", squeaky(ctx), sentence, flags=re.IGNORECASE)
 
-            # if it works, append the message to the
-            # full message
-            sentence += ("%s\n" % isentence)
+        # remove the @everyones and @heres
+        sentence = re.sub(r"\@everyone", "everyone", sentence, flags=re.IGNORECASE)
+        sentence = re.sub(r"\@here", "here", sentence, flags=re.IGNORECASE)
 
-            # reset the isentence variable
-            isentence = None
+        try:
 
-    # make the message squeaky clean
-    sentence = re.sub(r"\<\@(.*?)\>", squeaky(ctx), sentence, flags=re.IGNORECASE)
+            # send it
+            await message.channel.send(sentence)
 
-    # remove the @everyones and @heres
-    sentence = re.sub(r"\@everyone", "everyone", sentence, flags=re.IGNORECASE)
-    sentence = re.sub(r"\@here", "here", sentence, flags=re.IGNORECASE)
+        except discord.errors.HTTPException:
 
-    try:
+            # send an error message
+            await message.channel.send(
+                f"{ ctx.author.mention }, sorry, but the message generated was too long..."
+            )
 
-        # send it
-        await ctx.send(sentence)
+    else:
 
-    except discord.errors.HTTPException:
+        # get the message and let the spooler take care of it
+        global spool_queue
+        try:
 
-        # send an error message
-        await ctx.send(f"{ ctx.author.mention }, sorry, but the message generated was too long...")
+            # ensure we don't kill it before it started
+            spool_queue.put(message.clean_content)
+
+        except:
+
+            pass
 
 
 # run the bot
