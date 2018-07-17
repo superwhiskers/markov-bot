@@ -21,6 +21,14 @@ except FileNotFoundError:
 # create the bot object
 bot = Bot(description="that one markov chain bot", command_prefix="m~")
 
+@bot.event
+async def on_message(msg):
+ if msg.author == bot.user:
+    return
+ if msg.author.bot:
+    return
+ await bot.process_commands(msg)
+
 # markov chain
 chain = None
 
