@@ -1,4 +1,5 @@
 {
-	"token": "your token goes here",
-	"prefix": "m~"
+	"token": "token",
+	"prefix": "m~",
+	"order": 3
 }

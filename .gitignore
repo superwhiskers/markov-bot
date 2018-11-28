@@ -1,2 +1,4 @@
 config.json
-chat.log
+markov.log
+markov-bot
+model.json
