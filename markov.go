@@ -173,8 +173,15 @@ func onMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	}
 
+	content, err := m.ContentWithMoreMentionsReplaced(s)
+	if err != nil {
+
+		content = m.ContentWithMentionsReplaced()	
+
+	}
+
 	chainMutex.Lock()
-	chain.Add(strings.Split(m.ContentWithMoreMentionsReplaced(dg), " "))
+	chain.Add(strings.Split(content, " "))
 	chainMutex.Unlock()
 
 }
