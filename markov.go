@@ -42,16 +42,23 @@ import (
 )
 
 type configType struct {
-	Token  string `json:"token"`
-	Prefix string `json:"prefix"`
-	Order  int    `json:"order"`
+	Token   string `json:"token"`
+	Prefix  string `json:"prefix"`
+	Order   int    `json:"order"`
+	Hemlock bool   `json:"hemlock"`
+}
+
+type hemlockContent struct {
+	Content string `json:"content"`
+	Rating  int    `json:"rating"`
 }
 
 var (
-	config       configType
-	handler      *harmony.CommandHandler
-	chain        *gomarkov.Chain
-	mentionRegex *regexp.Regexp
+	config        configType
+	handler       *harmony.CommandHandler
+	chain         *gomarkov.Chain
+	mentionRegex  *regexp.Regexp
+	hemlockOutput []hemlockContent
 
 	chainMutex = &sync.Mutex{}
 )
@@ -92,6 +99,18 @@ func main() {
 	if err != nil {
 
 		log.Panicf("unable to parse config file. error: %v", err)
+
+	}
+
+	if config.Hemlock {
+
+		hemlockOutputByte, err := ioutil.ReadFile("hemlock.json")
+		err = json.Unmarshal(hemlockOutputByte, &hemlockOutput)
+		if err != nil {
+
+			hemlockOutput = []hemlockContent{}
+
+		}
 
 	}
 
@@ -140,19 +159,88 @@ func main() {
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
 	<-sc
 
+	log.Printf("stopping the bot...")
+
 	dg.Close()
 
-	modelJSON, err := json.Marshal(chain)
+	chainByte, err = json.Marshal(chain)
 	if err != nil {
 
 		log.Panicf("unable to convert the model to json. error: %v", err)
 
 	}
 
-	err = ioutil.WriteFile("model.json", modelJSON, 0644)
+	err = ioutil.WriteFile("model.json", chainByte, 0644)
 	if err != nil {
 
 		log.Panicf("unable to write the model to a file. error: %v", err)
+
+	}
+
+	if config.Hemlock {
+
+		hemlockOutputByte, err := json.Marshal(hemlockOutput)
+		if err != nil {
+
+			log.Panicf("unable to marshal json. error: %v", err)
+
+		}
+
+		err = ioutil.WriteFile("hemlock.json", hemlockOutputByte, 0644)
+		if err != nil {
+
+			log.Panicf("unable to write json to a file. error: %v", err)
+
+		}
+
+	}
+
+}
+
+// updates the model json and hemlock json in the background
+func backgroundModelUpdater() {
+
+	var (
+		chainByte []byte
+		hemlockOutputByte []byte
+		err error
+	)
+
+	for {
+
+		if config.Hemlock {
+
+			hemlockOutputByte, err = json.Marshal(hemlockOutput)
+			if err != nil {
+
+				log.Panicf("unable to marshal json. error: %v", err)
+
+			}
+
+			err = ioutil.WriteFile("hemlock.json", hemlockOutputByte,  0644)
+			if err != nil {
+
+				log.Panicf("unable to write json to a file. error: %v", err)
+
+			}
+
+		}
+
+		chainByte, err = json.Marshal(chain)
+		if err != nil {
+
+			log.Panicf("unable to convert the model to json. error: %v", err)
+
+		}
+
+		err = ioutil.WriteFile("model.json", chainByte, 0644)
+		if err != nil {
+
+			log.Panicf("unable to write the model to a file. error: %v", err)
+
+		}
+
+		time.Sleep(10 * time.Second)
 
 	}
 
@@ -176,7 +264,16 @@ func onMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 	content, err := m.ContentWithMoreMentionsReplaced(s)
 	if err != nil {
 
-		content = m.ContentWithMentionsReplaced()	
+		content = m.ContentWithMentionsReplaced()
+
+	}
+
+	if config.Hemlock {
+
+		hemlockOutput = append(hemlockOutput, hemlockContent{
+			Content: content,
+			Rating: -1,
+		})
 
 	}
 
@@ -192,6 +289,8 @@ func onReady(s *discordgo.Session, r *discordgo.Ready) {
 	time.Sleep(500 * time.Millisecond)
 
 	log.Printf("logged in as %s on %d servers...", r.User.String(), len(r.Guilds))
+
+	go backgroundModelUpdater()
 
 }
 
@@ -334,7 +433,7 @@ func generate() string {
 	}
 
 	chainMutex.Unlock()
-	
+
 	if strings.Join(tokens[order:len(tokens)-1], " ") == "" {
 
 		return generate()
