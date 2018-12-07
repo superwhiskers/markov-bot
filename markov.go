@@ -61,6 +61,7 @@ var (
 	hemlockOutput []hemlockContent
 
 	chainMutex = &sync.Mutex{}
+	hemlockMutex = &sync.Mutex{}
 )
 
 func init() {
@@ -104,6 +105,7 @@ func main() {
 
 	if config.Hemlock {
 
+		hemlockMutex.Lock()
 		hemlockOutputByte, err := ioutil.ReadFile("hemlock.json")
 		err = json.Unmarshal(hemlockOutputByte, &hemlockOutput)
 		if err != nil {
@@ -111,9 +113,11 @@ func main() {
 			hemlockOutput = []hemlockContent{}
 
 		}
+		hemlockMutex.Unlock()
 
 	}
 
+	chainMutex.Lock()
 	chainByte, err := ioutil.ReadFile("model.json")
 	if err != nil {
 
@@ -129,6 +133,7 @@ func main() {
 		}
 
 	}
+	chainMutex.Unlock()
 
 	dg, err := discordgo.New(fmt.Sprintf("Bot %s", config.Token))
 	if err != nil {
@@ -163,6 +168,7 @@ func main() {
 
 	dg.Close()
 
+	chainMutex.Lock()
 	chainByte, err = json.Marshal(chain)
 	if err != nil {
 
@@ -176,9 +182,11 @@ func main() {
 		log.Panicf("unable to write the model to a file. error: %v", err)
 
 	}
+	chainMutex.Unlock()
 
 	if config.Hemlock {
 
+		hemlockMutex.Lock()
 		hemlockOutputByte, err := json.Marshal(hemlockOutput)
 		if err != nil {
 
@@ -192,6 +200,7 @@ func main() {
 			log.Panicf("unable to write json to a file. error: %v", err)
 
 		}
+		hemlockMutex.Unlock()
 
 	}
 
@@ -210,6 +219,7 @@ func backgroundModelUpdater() {
 
 		if config.Hemlock {
 
+			hemlockMutex.Lock()
 			hemlockOutputByte, err = json.Marshal(hemlockOutput)
 			if err != nil {
 
@@ -223,6 +233,7 @@ func backgroundModelUpdater() {
 				log.Panicf("unable to write json to a file. error: %v", err)
 
 			}
+			hemlockMutex.Unlock()
 
 		}
 
@@ -272,10 +283,12 @@ func onMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	if config.Hemlock {
 
+		hemlockMutex.Lock()
 		hemlockOutput = append(hemlockOutput, hemlockContent{
 			Content: content,
 			Rating:  -1,
 		})
+		hemlockMutex.Unlock()
 
 	}
 
