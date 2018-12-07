@@ -201,9 +201,9 @@ func main() {
 func backgroundModelUpdater() {
 
 	var (
-		chainByte []byte
+		chainByte         []byte
 		hemlockOutputByte []byte
-		err error
+		err               error
 	)
 
 	for {
@@ -217,7 +217,7 @@ func backgroundModelUpdater() {
 
 			}
 
-			err = ioutil.WriteFile("hemlock.json", hemlockOutputByte,  0644)
+			err = ioutil.WriteFile("hemlock.json", hemlockOutputByte, 0644)
 			if err != nil {
 
 				log.Panicf("unable to write json to a file. error: %v", err)
@@ -226,12 +226,14 @@ func backgroundModelUpdater() {
 
 		}
 
+		chainMutex.Lock()
 		chainByte, err = json.Marshal(chain)
 		if err != nil {
 
 			log.Panicf("unable to convert the model to json. error: %v", err)
 
 		}
+		chainMutex.Unlock()
 
 		err = ioutil.WriteFile("model.json", chainByte, 0644)
 		if err != nil {
@@ -272,7 +274,7 @@ func onMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 		hemlockOutput = append(hemlockOutput, hemlockContent{
 			Content: content,
-			Rating: -1,
+			Rating:  -1,
 		})
 
 	}
@@ -304,7 +306,8 @@ func help(s *discordgo.Session, m *discordgo.MessageCreate, args []string) {
 		Fields: []*discordgo.MessageEmbedField{
 			{
 				Name:   "commands",
-				Value:  "**markov [count]**: generate `count` messages. if count is not provided, it generates one",
+				Value:  `**help**: shows this message
+				**markov [count]**: generate 'count' messages. if 'count' is not provided, it generates one. count is any whole number ranging from 1-5`,
 				Inline: false,
 			},
 		},
@@ -351,7 +354,7 @@ func markov(s *discordgo.Session, m *discordgo.MessageCreate, args []string) {
 
 		_, err := s.ChannelMessageSendEmbed(m.ChannelID, &discordgo.MessageEmbed{
 			Title:       "invalid command argument",
-			Description: fmt.Sprintf("\"%s\" is not a number", args[0]),
+			Description: fmt.Sprintf("\"%s\" is not a whole number", args[0]),
 			Color:       0xFFF176,
 			Footer: &discordgo.MessageEmbedFooter{
 				Text: "built with ❤ by superwhiskers#3210",
@@ -372,8 +375,29 @@ func markov(s *discordgo.Session, m *discordgo.MessageCreate, args []string) {
 
 		_, err := s.ChannelMessageSendEmbed(m.ChannelID, &discordgo.MessageEmbed{
 			Title:       "number of messages to generate too high",
-			Description: fmt.Sprintf("\"%s\" is greater than 5", args[0]),
+			Description: fmt.Sprintf("%s is greater than 5", args[0]),
 			Color:       0xFFF176,
+			Footer: &discordgo.MessageEmbedFooter{
+				Text: "built with ❤ by superwhiskers#3210",
+			},
+		})
+
+		if err != nil {
+
+			log.Errorf("unable to send message. error: %v", err)
+
+		}
+
+		return
+
+	}
+
+	if times < 1 {
+
+		_, err := s.ChannelMessageSendEmbed(m.ChannelID, &discordgo.MessageEmbed{
+			Title: "number of messages to generate too low",
+			Description: fmt.Sprintf("%s is less than 1", args[0]),
+			Color: 0xFFF176,
 			Footer: &discordgo.MessageEmbedFooter{
 				Text: "built with ❤ by superwhiskers#3210",
 			},
